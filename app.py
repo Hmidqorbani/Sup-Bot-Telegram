@@ -19,12 +19,12 @@ from telegram.ext import (
 )
 
 # ================== تنظیمات ==================
-BOT_TOKEN = "8529660188:AAEovc-HbLkeTJ0mMbJ50cx5ufhmaMtIsJk"
-ADMIN_ID = 588149325  # آیدی عددی ادمین
+# BOT_TOKEN = ""
+# ADMIN_ID =   # آیدی عددی ادمین
 
 
-# BOT_TOKEN = os.getenv("BOT_TOKEN")
-# ADMIN_ID = int(os.getenv("ADMIN_ID"))
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 USERS_FILE = "users.json"
 WELCOME_FILE = "welcome.txt"
