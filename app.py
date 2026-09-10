@@ -257,7 +257,7 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = message_map.get(replied_id)
 
     if not user_id:
-        await update.message.reply_text("❌ این پیام دیگه قابل پاسخ نیست.")
+        # اگر پیام مرتبط یافت نشد، دیگر پیغام خطایی نشان ندهیم؛ صرفاً نادیده بگیریم.
         return
 
     try:
@@ -267,14 +267,15 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
             message_id=update.message.message_id,
         )
         await update.message.reply_text("✅ ارسال شد")
-        message_map.pop(replied_id, None)
+        # نگهداری mapping برای امکان ارسال پاسخ‌های متعدد
+        # (نگهداری message_map بدون حذف)        
     except Exception as e:
         await update.message.reply_text(f"❌ خطا در ارسال: {e}")
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """روتین عمومی برای مدیریت تمام callbackها.
-    تمام پردازش به ماژول ``callback_handlers`` منتقل شده است.
+    تمام پردازش در همین تابع انجام می‌شود.
     """
     query = update.callback_query
     await query.answer()
