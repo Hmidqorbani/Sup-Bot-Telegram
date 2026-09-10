@@ -19,12 +19,12 @@ from telegram.ext import (
 )
 
 # ================== تنظیمات ==================
-BOT_TOKEN = "8529660188:AAEovc-HbLkeTJ0mMbJ50cx5ufhmaMtIsJk"
-ADMIN_ID = 588149325  # آیدی عددی ادمین
+# BOT_TOKEN = ""
+# ADMIN_ID =   # آیدی عددی ادمین
 
 
-# BOT_TOKEN = os.getenv("BOT_TOKEN")
-# ADMIN_ID = int(os.getenv("ADMIN_ID"))
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 USERS_FILE = "users.json"
 WELCOME_FILE = "welcome.txt"
@@ -108,6 +108,10 @@ def required_channels_keyboard(channels):
     ]
     keyboard.append(
         [InlineKeyboardButton("✅ بررسی عضویت", callback_data="check_join")]
+    )
+    # افزودن دکمهٔ بازگشت به منوی قبلی
+    keyboard.append(
+        [InlineKeyboardButton("↩️ بازگشت", callback_data="admin_back")]
     )
     return InlineKeyboardMarkup(keyboard)
 
@@ -269,8 +273,118 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """روتین عمومی برای مدیریت تمام callbackها.
+    تمام پردازش به ماژول ``callback_handlers`` منتقل شده است.
+    """
     query = update.callback_query
     await query.answer()
+    data = query.data
+
+    # ------------------ callback عمومی (همه کاربران) ------------------
+    if data == "check_join":
+        missing = await get_missing_channels(context.bot, query.from_user.id)
+        if missing:
+            await query.edit_message_text(
+                "هنوز عضویت شما در همه کانال‌ها تأیید نشده است:",
+                reply_markup=required_channels_keyboard(missing),
+            )
+        else:
+            await query.edit_message_text("✅ عضویت شما تأیید شد. حالا می‌توانید پیام بفرستید.")
+        return
+
+    # فقط ادمین می‌تواند از callbackهای admin استفاده کند
+    if data.startswith("admin") and query.from_user.id != ADMIN_ID:
+        return
+
+    # ------------------ منوی admin ------------------
+    if data == "admin_join":
+        await query.edit_message_text(
+            "🔒 مدیریت جوین اجباری\nکانال‌ها را مدیریت کنید:",
+            reply_markup=force_join_menu(),
+        )
+    elif data == "admin_join_toggle":
+        settings = load_force_join()
+        if not settings["channels"]:
+            await query.answer("ابتدا حداقل یک کانال اضافه کنید.", show_alert=True)
+            return
+        settings["enabled"] = not settings["enabled"]
+        save_force_join(settings)
+        await query.edit_message_text(
+            "🔒 مدیریت جوین اجباری\nکانال‌ها را مدیریت کنید:",
+            reply_markup=force_join_menu(),
+        )
+    elif data == "admin_join_add":
+        context.user_data["waiting_for_channel_title"] = True
+        context.user_data.pop("pending_channel_title", None)
+        await query.edit_message_text(
+            "نام کانال را بفرستید.\n\nبرای لغو، /cancel را بفرستید."
+        )
+    elif data == "admin_join_list":
+        settings = load_force_join()
+        if not settings["channels"]:
+            text = "📋 هنوز کانالی ثبت نشده است."
+            keyboard = force_join_menu()
+            await query.edit_message_text(text, reply_markup=keyboard)
+            return
+        lines = ["📋 کانال‌های ثبت‌شده:"]
+        keyboard_rows = []
+        for index, channel in enumerate(settings["channels"], start=1):
+            lines.append(f"{index}. {channel['title']} ({channel['chat_id']})")
+            keyboard_rows.append(
+                [
+                    InlineKeyboardButton(
+                        f"🗑 حذف {channel['title']}",
+                        callback_data=f"admin_join_remove:{index - 1}",
+                    )
+                ]
+            )
+        # دکمه بازگشت به منوی قبلی
+        keyboard_rows.append([InlineKeyboardButton("↩️ بازگشت", callback_data="admin_back")])
+        keyboard = InlineKeyboardMarkup(keyboard_rows)
+        await query.edit_message_text("\n".join(lines), reply_markup=keyboard)
+    elif data.startswith("admin_join_remove:"):
+        try:
+            index = int(data.rsplit(":", 1)[1])
+            settings = load_force_join()
+            removed = settings["channels"].pop(index)
+            if not settings["channels"]:
+                settings["enabled"] = False
+            save_force_join(settings)
+            await query.edit_message_text(
+                f"✅ کانال «{removed['title']}» حذف شد.",
+                reply_markup=force_join_menu(),
+            )
+        except (ValueError, IndexError):
+            await query.edit_message_text(
+                "❌ این کانال دیگر وجود ندارد.", reply_markup=force_join_menu()
+            )
+    elif data == "admin_back":
+        await query.edit_message_text(
+            "یکی از گزینه‌ها رو انتخاب کن:", reply_markup=get_admin_inline_menu()
+        )
+    elif data == "admin_stats":
+        text = (
+            f"📊 آمار ربات\n\n"
+            f"تعداد کل کاربران: {len(users)}\n"
+            f"پیام‌های در انتظار پاسخ: {len(message_map)}"
+        )
+        await query.edit_message_text(text, reply_markup=get_admin_inline_menu())
+    elif data == "admin_welcome":
+        current = load_welcome()
+        await query.edit_message_text(
+            f"📝 پیام خوش‌آمدگویی فعلی:\n\n{current}",
+            reply_markup=get_admin_inline_menu(),
+        )
+    elif data == "admin_setwelcome":
+        context.user_data["waiting_for_welcome"] = True
+        await query.edit_message_text(
+            "📝 لطفاً متن جدید خوش‌آمدگویی را ارسال کنید:\n\n(برای لغو، /cancel را بفرستید)"
+        )
+    elif data == "admin_broadcast":
+        context.user_data["waiting_for_broadcast"] = True
+        await query.edit_message_text(
+            "📢 لطفاً متن پیام همگانی را ارسال کنید:\n\n(برای لغو، /cancel را بفرستید)"
+        )
 
     if query.data == "check_join":
         missing = await get_missing_channels(context.bot, query.from_user.id)
